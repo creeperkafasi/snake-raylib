@@ -10,6 +10,7 @@
 #define ENABLE_GAMEPAD 1
 
 const float SPEED = 150;
+const float BOOST = 4;
 const float DEADZONE = 0.1;
 const float ZOOM_MAX = 2.0;
 
@@ -26,6 +27,7 @@ typedef struct {
   int length;
   Vector2 movement_direction;
   Vector2 look_direction;
+  float boost_time;
 } Snake;
 
 void addSnakeFront(Snake* self, Vector2 pos, float length) {
@@ -46,10 +48,33 @@ void addSnakeFront(Snake* self, Vector2 pos, float length) {
   self->head = new;
 }
 
+void addSnakeTail(Snake* self, Vector2 pos, float length) {
+  SnakePart* new = malloc(sizeof(SnakePart));
+  new->pos = pos;
+  new->length = length;
+
+  new->next = self->tail;
+  self->tail = new;
+  self->length++;
+}
+
+
+void popSnakeTail(Snake* self) {
+  SnakePart* temp = self->tail; 
+  self->tail = self->tail->next;
+  free(temp);
+  self->length--;
+}
+
 void moveSnake(Snake* self, float dt) {
+  float speed = SPEED;
+  if (self->boost_time > 0) {
+    speed *= BOOST;
+    self->boost_time -= dt;
+  }
   for (SnakePart* part = self->tail; part != NULL; part = part->next){
     if (part->next == NULL) {
-      part->pos = Vector2Add(part->pos, Vector2Scale(self->movement_direction, SPEED * dt));
+      part->pos = Vector2Add(part->pos, Vector2Scale(self->movement_direction, speed * dt));
     }
     else {
       Vector2 dpos = Vector2Subtract(part->next->pos, part->pos);
@@ -273,6 +298,23 @@ void input_gamepad(Camera2D* camera, Snake* snake, float dt){
     );
   }
 
+  if (IsGamepadButtonPressed(gamepad, GAMEPAD_BUTTON_RIGHT_FACE_DOWN)) {
+    for (int i = 0; i < 10; i++) {
+      addSnakeTail(snake, snake->tail->pos, snake->tail->length);
+    }
+  }
+
+  
+  if ( IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT) &&
+       (snake->length > 10) ) {
+    //printf("boost %f && %d\n", snake->boost_time, snake->length);
+    if ( (snake->boost_time <= 0) && (snake->length > 10) ) {
+      snake->boost_time += 0.2;
+      popSnakeTail(snake);
+    }
+  }
+  
+
   //real_direction = input_direction;
   
 }
@@ -327,6 +369,13 @@ int main(){
   int resolutionLoc = GetShaderLocation(background_shader, "screenSize");
   int cameraTransformLoc = GetShaderLocation(background_shader, "cameraTransform");
 
+
+  Shader speedlines_shader = LoadShader(0, "speedlines.fs");
+  
+  // Get uniform locations
+  int iResolutionLoc = GetShaderLocation(speedlines_shader, "iResolution");
+  int iTimeLoc = GetShaderLocation(speedlines_shader, "iTime");
+
   float time = 0.0f;
 
 
@@ -346,9 +395,10 @@ int main(){
     .length = 0,
     .look_direction = {0, 0},
     .movement_direction = {1, 0},
+    .boost_time = 0,
   };
-  int partCount = 300;
-  float initialLength = 300;
+  int partCount = 50;
+  float initialLength = 100;
   for (int i = 0; i < partCount; i++) {
     addSnakeFront(
           &snake
@@ -416,14 +466,29 @@ int main(){
     SetShaderValueMatrix(background_shader, cameraTransformLoc, GetCameraMatrix2D(camera));
 
     BeginShaderMode(background_shader);
-    DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), BLUE);
+    DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), WHITE);
     EndShaderMode();
+
     
     BeginMode2D(camera);
 
     renderSnake(&snake);
 
     EndMode2D();
+
+    // Speedlines during boost
+    if (snake.boost_time > 0) {
+      SetShaderValue(
+          speedlines_shader,
+          iResolutionLoc,
+          &(Vector2){GetScreenWidth(),GetScreenHeight()},
+          SHADER_UNIFORM_VEC2
+      );
+      SetShaderValue(speedlines_shader, iTimeLoc, &time, SHADER_UNIFORM_FLOAT);
+      BeginShaderMode(speedlines_shader);
+      DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), WHITE);
+      EndShaderMode();
+    }
 
     EndDrawing();
   }
