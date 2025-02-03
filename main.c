@@ -201,51 +201,9 @@ void renderSnake(Snake* snake) {
   );
 }
 
-int main(){
-  InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Snake");
+int gamepad = 0;
 
-  // Load the shader
-  Shader shader = LoadShader("background.vs", "background.fs");
-
-  // Get the uniform locations
-  int mvpLoc = GetShaderLocation(shader, "mvp");
-  int resolutionLoc = GetShaderLocation(shader, "screenSize");
-  int cameraTransformLoc = GetShaderLocation(shader, "cameraTransform");
-
-  float time = 0.0f;
-
-
-  int gamepad = 0;
-
-  Camera2D camera = {
-    .zoom = 1.0,
-    .offset = {0, 0},
-    .rotation = 0,
-    .target = {0, 0},
-  };
-
-  Snake snake = {
-    .head = NULL,
-    .tail = NULL,
-    .thickness = 10,
-    .length = 0,
-    .look_direction = {0, 0},
-    .movement_direction = {0, 0},
-  };
-  int partCount = 300;
-  float initialLength = 300;
-  for (int i = 0; i < partCount; i++) {
-    addSnakeFront(
-          &snake
-        , (Vector2){250, 100 + initialLength * i / partCount}
-        , initialLength / partCount
-    );
-  }
-
-  Vector2 velocity = {0, 0};
-  Vector2 input_direction = {0, 0};
-
-  while(!WindowShouldClose()){
+int screen_mainmenu() {
     while (
       !IsGamepadAvailable(gamepad) && 
       gamepad > 0
@@ -257,10 +215,10 @@ int main(){
     ) gamepad++;
 
     if (IsGamepadAvailable(gamepad)){
-      if (IsGamepadButtonPressed(gamepad, GAMEPAD_BUTTON_RIGHT_FACE_DOWN)) break;
+      if (IsGamepadButtonPressed(gamepad, GAMEPAD_BUTTON_RIGHT_FACE_DOWN)) return 1;
     }
     else {
-      if (IsKeyPressed(KEY_ENTER)) break;
+      if (IsKeyPressed(KEY_ENTER)) return 1;
     }
 
     BeginDrawing();
@@ -284,15 +242,131 @@ int main(){
     }
 
     EndDrawing();
+    return 0;
+}
+
+void input_gamepad(Camera2D* camera, Snake* snake, float dt){
+  float targetZoom = 
+    1.0 +
+    (GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_LEFT_TRIGGER) + 1) / 2 *
+    ZOOM_MAX;
+  camera->zoom = Lerp(camera->zoom, targetZoom, dt / 0.2);
+
+
+  Vector2 temp_direction = (Vector2){
+    GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_LEFT_X),
+    GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_LEFT_Y)
+  };
+
+  snake->look_direction = (Vector2){
+    GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_RIGHT_X),
+    GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_RIGHT_Y)
+  };
+
+  if (Vector2Length(temp_direction) > DEADZONE) {
+   snake->movement_direction = Vector2Normalize(
+      Vector2Lerp(
+        snake->movement_direction,
+        Vector2Normalize(temp_direction),
+        dt / 0.05
+      )
+    );
+  }
+
+  //real_direction = input_direction;
+  
+}
+
+void input_keymouse(Camera2D* camera, Snake* snake, float dt) {
+      float targetZoom = IsKeyDown(KEY_SPACE) ? ZOOM_MAX : 1.0;
+      camera->zoom = Lerp(camera->zoom, targetZoom, dt / 0.2);
+
+      Vector2 temp_direction = Vector2Normalize(
+        Vector2Subtract(
+          GetMousePosition(),
+          (Vector2){GetRenderWidth()/2,GetRenderHeight()/2}
+        )
+      );
+
+      if (Vector2Length(temp_direction) > DEADZONE) {
+        snake->movement_direction = Vector2Normalize(
+          Vector2Lerp(
+            snake->movement_direction,
+            temp_direction,
+            dt * 20
+          )
+        );
+      }
+
+      snake->look_direction = (Vector2){0, 0};
+      if (IsKeyDown(KEY_W)) snake->look_direction = Vector2Add(
+          snake->look_direction, (Vector2){0, -1}
+        );
+      if (IsKeyDown(KEY_A)) snake->look_direction = Vector2Add(
+          snake->look_direction, (Vector2){-1, 0}
+        );
+      if (IsKeyDown(KEY_S)) snake->look_direction = Vector2Add(
+          snake->look_direction, (Vector2){0, 1}
+        );
+      if (IsKeyDown(KEY_D)) snake->look_direction = Vector2Add(
+          snake->look_direction, (Vector2){1, 0}
+        );
+
+      if (Vector2Length(snake->look_direction) > DEADZONE)
+        snake->look_direction = Vector2Normalize(snake->look_direction);
+}
+
+int main(){
+  InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Snake");
+
+  // Load the shader
+  Shader background_shader = LoadShader("background.vs", "background.fs");
+
+  // Get the uniform locations
+  int mvpLoc = GetShaderLocation(background_shader, "mvp");
+  int resolutionLoc = GetShaderLocation(background_shader, "screenSize");
+  int cameraTransformLoc = GetShaderLocation(background_shader, "cameraTransform");
+
+  float time = 0.0f;
+
+
+  int gamepad = 0;
+
+  Camera2D camera = {
+    .zoom = 1.0,
+    .offset = {0, 0},
+    .rotation = 0,
+    .target = {0, 0},
+  };
+
+  Snake snake = {
+    .head = NULL,
+    .tail = NULL,
+    .thickness = 10,
+    .length = 0,
+    .look_direction = {0, 0},
+    .movement_direction = {1, 0},
+  };
+  int partCount = 300;
+  float initialLength = 300;
+  for (int i = 0; i < partCount; i++) {
+    addSnakeFront(
+          &snake
+        , (Vector2){250, 100 + initialLength * i / partCount}
+        , initialLength / partCount
+    );
+  }
+
+  Vector2 velocity = {0, 0};
+  Vector2 input_direction = {0, 0};
+
+  while(!WindowShouldClose()){
+    if (screen_mainmenu()) break;
   }
   while(!WindowShouldClose()){
     float dt = GetFrameTime();
     time += dt;
 
-    Vector2 resolution = { GetScreenWidth(), GetScreenHeight() };
-    SetShaderValue(shader, resolutionLoc, &resolution, SHADER_UNIFORM_VEC2);
-    SetShaderValueMatrix(shader, mvpLoc, GetCameraMatrix2D(camera));
-    SetShaderValueMatrix(shader, cameraTransformLoc, GetCameraMatrix2D(camera));
     
     while (
       !IsGamepadAvailable(gamepad) && 
@@ -304,83 +378,11 @@ int main(){
       TextFindIndex(GetGamepadName(gamepad), "Touchpad") > -1
     ) gamepad++;
 
-    if (
-     IsGamepadAvailable(gamepad)
-    ) {
-
-      float targetZoom = 
-        1.0 +
-        (GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_LEFT_TRIGGER) + 1) / 2 *
-        ZOOM_MAX;
-      camera.zoom = Lerp(camera.zoom, targetZoom, dt / 0.2);
-
-
-      Vector2 temp_direction = (Vector2){
-        GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_LEFT_X),
-        GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_LEFT_Y)
-      };
-
-      snake.look_direction = (Vector2){
-        GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_RIGHT_X),
-        GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_RIGHT_Y)
-      };
-
-      if (Vector2Length(temp_direction) > DEADZONE) {
-        input_direction = Vector2Normalize(temp_direction);
-      }
-
-      //real_direction = input_direction;
-      
-     snake.movement_direction = Vector2Normalize(
-        Vector2Lerp(
-          snake.movement_direction,
-          input_direction,
-          dt / 0.05
-        )
-      );
-      
-
+    if ( IsGamepadAvailable(gamepad) ) {
+      input_gamepad(&camera, &snake, dt);
     }
     else {
-      float targetZoom = IsKeyDown(KEY_SPACE) ? ZOOM_MAX : 1.0;
-      camera.zoom = Lerp(camera.zoom, targetZoom, dt / 0.2);
-
-      Vector2 temp_direction = Vector2Normalize(
-        Vector2Subtract(
-          GetMousePosition(),
-          (Vector2){GetRenderWidth()/2,GetRenderHeight()/2}
-        )
-      );
-
-      if (Vector2Length(temp_direction) > DEADZONE) {
-        input_direction = Vector2Normalize(temp_direction);
-      }
-
-      snake.movement_direction = Vector2Normalize(
-        Vector2Lerp(
-          snake.movement_direction,
-          input_direction,
-          dt * 20
-        )
-      );
-
-      snake.look_direction = (Vector2){0, 0};
-      if (IsKeyDown(KEY_W)) snake.look_direction = Vector2Add(
-          snake.look_direction, (Vector2){0, -1}
-        );
-      if (IsKeyDown(KEY_A)) snake.look_direction = Vector2Add(
-          snake.look_direction, (Vector2){-1, 0}
-        );
-      if (IsKeyDown(KEY_S)) snake.look_direction = Vector2Add(
-          snake.look_direction, (Vector2){0, 1}
-        );
-      if (IsKeyDown(KEY_D)) snake.look_direction = Vector2Add(
-          snake.look_direction, (Vector2){1, 0}
-        );
-
-      if (Vector2Length(snake.look_direction) > DEADZONE)
-        snake.look_direction = Vector2Normalize(snake.look_direction);
-
+      input_keymouse(&camera, &snake, dt);
     }
 
     moveSnake(&snake, dt);
@@ -398,23 +400,30 @@ int main(){
             200 / camera.zoom
           )
         ),
-        dt * 5
+        dt / 0.1
     );
     camera.offset = Vector2Scale(sdiv2, 1 - camera.zoom);
     
 
     BeginDrawing();
 
+    // Draw background
     ClearBackground((Color){7,5,13,255});
 
-    BeginShaderMode(shader);
+    Vector2 resolution = { GetScreenWidth(), GetScreenHeight() };
+    SetShaderValue(background_shader, resolutionLoc, &resolution, SHADER_UNIFORM_VEC2);
+    SetShaderValueMatrix(background_shader, mvpLoc, GetCameraMatrix2D(camera));
+    SetShaderValueMatrix(background_shader, cameraTransformLoc, GetCameraMatrix2D(camera));
+
+    BeginShaderMode(background_shader);
     DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), BLUE);
     EndShaderMode();
     
     BeginMode2D(camera);
-    
 
     renderSnake(&snake);
+
+    EndMode2D();
 
     EndDrawing();
   }
