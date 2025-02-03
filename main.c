@@ -11,7 +11,7 @@
 
 const float SPEED = 150;
 const float DEADZONE = 0.1;
-const float ZOOM_MAX = 4.0;
+const float ZOOM_MAX = 2.0;
 
 typedef struct SnakePart {
   struct SnakePart* next;
@@ -23,13 +23,18 @@ typedef struct {
   SnakePart* head;
   SnakePart* tail;
   float thickness;
-} SnakeQueue;
+  int length;
+  Vector2 movement_direction;
+  Vector2 look_direction;
+} Snake;
 
-void addSnakeFront(SnakeQueue* self, Vector2 pos, float length) {
+void addSnakeFront(Snake* self, Vector2 pos, float length) {
   SnakePart* new = malloc(sizeof(SnakePart));
   new->pos = pos;
   new->length = length;
   new->next = NULL;
+
+  self->length++;
 
   if (self->head == NULL) {
     self->head = new;
@@ -41,10 +46,10 @@ void addSnakeFront(SnakeQueue* self, Vector2 pos, float length) {
   self->head = new;
 }
 
-void moveSnake(SnakeQueue* self, Vector2 direction, float dt) {
+void moveSnake(Snake* self, float dt) {
   for (SnakePart* part = self->tail; part != NULL; part = part->next){
     if (part->next == NULL) {
-      part->pos = Vector2Add(part->pos, Vector2Scale(direction, SPEED * dt));
+      part->pos = Vector2Add(part->pos, Vector2Scale(self->movement_direction, SPEED * dt));
     }
     else {
       Vector2 dpos = Vector2Subtract(part->next->pos, part->pos);
@@ -59,6 +64,141 @@ void moveSnake(SnakeQueue* self, Vector2 direction, float dt) {
       }
     }
   };
+}
+
+void renderSnake(Snake* snake) {
+  int i = snake->length - 1;
+  Color colors[] =
+    {
+      {250, .a = 255},
+      {250, .a = 255},
+      {250, .a = 255},
+      {250, .a = 255},
+      {250, .a = 255},
+      {250, .a = 255},
+      {250, .a = 255},
+      {250, .a = 255},
+      WHITE,
+    };
+  int colorCount = sizeof(colors) / sizeof(Color);
+
+  for (SnakePart* part = snake->tail; part != NULL; part = part->next) {
+    Vector2 pos = part->pos;
+    
+    int colorIndex = i % colorCount;
+
+    if (part->next != NULL) {
+      DrawCircleV(pos, snake->thickness, colors[colorIndex]);
+    }
+    else {
+      // Head
+      DrawCircleV(pos, snake->thickness * 1.2, colors[colorIndex]);
+
+      // Right Eye
+      DrawCircleV(
+          Vector2Add(
+            Vector2Add(
+              pos,
+              Vector2Scale(snake->movement_direction, snake->thickness * 0.6)
+            ),
+            Vector2Scale(
+              Vector2Rotate(snake->movement_direction, PI/2),
+              snake->thickness * 0.5
+            )
+          ),
+          snake->thickness * 0.4, WHITE);
+      DrawCircleV(
+          Vector2Add(
+            Vector2Add(
+              pos,
+              Vector2Add(
+                Vector2Scale(
+                  snake->movement_direction,
+                  snake->thickness * 0.6
+                ),
+                Vector2Scale(
+                  snake->look_direction,
+                  snake->thickness * 0.2
+                )
+              )
+            ),
+            Vector2Scale(
+              Vector2Rotate(snake->movement_direction, PI/2),
+              snake->thickness * 0.5
+            )
+          ),
+          snake->thickness * 0.2, BLACK);
+
+      // Left Eye
+      DrawCircleV(
+          Vector2Add(
+            Vector2Add(
+              pos,
+              Vector2Scale(snake->movement_direction, snake->thickness * 0.6)
+            ),
+            Vector2Scale(
+              Vector2Rotate(snake->movement_direction, PI/2),
+              snake->thickness * -0.5
+            )
+          ),
+          snake->thickness * 0.4, WHITE);
+      DrawCircleV(
+          Vector2Add(
+            Vector2Add(
+              pos,
+              Vector2Add(
+                Vector2Scale(
+                  snake->movement_direction,
+                  snake->thickness * 0.6
+                ),
+                Vector2Scale(
+                  snake->look_direction,
+                  snake->thickness * 0.2
+                )
+              )
+            ),
+            Vector2Scale(
+              Vector2Rotate(snake->movement_direction, PI/2),
+              snake->thickness * -0.5
+            )
+          ),
+          snake->thickness * 0.2, BLACK);
+
+
+    }
+    i--;
+  }
+
+
+  float triangle_size = 0.8;
+  float triangle_offset = 3;
+  DrawTriangle(
+      Vector2Add(
+        Vector2Add(
+          snake->head->pos,
+          Vector2Scale(snake->movement_direction, snake->thickness * triangle_offset)
+        ),
+        Vector2Rotate(
+          Vector2Scale(snake->movement_direction, snake->thickness * triangle_size),
+          -PI/2
+        )
+      ),
+      Vector2Add(
+        Vector2Add(
+          snake->head->pos,
+          Vector2Scale(snake->movement_direction, snake->thickness * triangle_offset)
+        ),
+        Vector2Rotate(
+          Vector2Scale(snake->movement_direction, snake->thickness * triangle_size),
+          PI/2
+        )
+      ),
+      Vector2Add(
+        snake->head->pos,
+        Vector2Scale(snake->movement_direction, snake->thickness * (triangle_offset + triangle_size))
+      ),
+      (Color){255,255,255,100}
+  );
 }
 
 int main(){
@@ -84,10 +224,13 @@ int main(){
     .target = {0, 0},
   };
 
-  SnakeQueue snake = {
+  Snake snake = {
     .head = NULL,
     .tail = NULL,
-    .thickness = 10
+    .thickness = 10,
+    .length = 0,
+    .look_direction = {0, 0},
+    .movement_direction = {0, 0},
   };
   int partCount = 300;
   float initialLength = 300;
@@ -101,10 +244,47 @@ int main(){
 
   Vector2 velocity = {0, 0};
   Vector2 input_direction = {0, 0};
-  Vector2 real_direction = {0, 0};
-  Vector2 look_direction = {0, 0}; 
-  
 
+  while(!WindowShouldClose()){
+    while (
+      !IsGamepadAvailable(gamepad) && 
+      gamepad > 0
+    ) gamepad--;
+
+    while (
+      IsGamepadAvailable(gamepad) && 
+      TextFindIndex(GetGamepadName(gamepad), "Touchpad") > -1
+    ) gamepad++;
+
+    if (IsGamepadAvailable(gamepad)){
+      if (IsGamepadButtonPressed(gamepad, GAMEPAD_BUTTON_RIGHT_FACE_DOWN)) break;
+    }
+    else {
+      if (IsKeyPressed(KEY_ENTER)) break;
+    }
+
+    BeginDrawing();
+    ClearBackground(BLACK);
+
+    if (IsGamepadAvailable(gamepad)){
+      DrawTextEx(
+        GetFontDefault(),
+        "Press A\n"
+        "to start",
+        (Vector2){50,150}, 36, 10, WHITE
+      );
+    }
+    else {
+      DrawTextEx(
+        GetFontDefault(),
+        "Press ENTER\n"
+        "to start",
+        (Vector2){50,150}, 36, 10, WHITE
+      );
+    }
+
+    EndDrawing();
+  }
   while(!WindowShouldClose()){
     float dt = GetFrameTime();
     time += dt;
@@ -127,7 +307,6 @@ int main(){
     if (
      IsGamepadAvailable(gamepad)
     ) {
-      printf("%s\n", GetGamepadName(gamepad));
 
       float targetZoom = 
         1.0 +
@@ -141,7 +320,7 @@ int main(){
         GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_LEFT_Y)
       };
 
-      look_direction = (Vector2){
+      snake.look_direction = (Vector2){
         GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_RIGHT_X),
         GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_RIGHT_Y)
       };
@@ -150,16 +329,19 @@ int main(){
         input_direction = Vector2Normalize(temp_direction);
       }
 
-      real_direction = Vector2Normalize(
+      //real_direction = input_direction;
+      
+     snake.movement_direction = Vector2Normalize(
         Vector2Lerp(
-          real_direction,
+          snake.movement_direction,
           input_direction,
-          dt * 20
+          dt / 0.05
         )
       );
+      
 
     }
-    {
+    else {
       float targetZoom = IsKeyDown(KEY_SPACE) ? ZOOM_MAX : 1.0;
       camera.zoom = Lerp(camera.zoom, targetZoom, dt / 0.2);
 
@@ -174,34 +356,34 @@ int main(){
         input_direction = Vector2Normalize(temp_direction);
       }
 
-      real_direction = Vector2Normalize(
+      snake.movement_direction = Vector2Normalize(
         Vector2Lerp(
-          real_direction,
+          snake.movement_direction,
           input_direction,
           dt * 20
         )
       );
 
-      look_direction = (Vector2){0, 0};
-      if (IsKeyDown(KEY_W)) look_direction = Vector2Add(
-          look_direction, (Vector2){0, -1}
+      snake.look_direction = (Vector2){0, 0};
+      if (IsKeyDown(KEY_W)) snake.look_direction = Vector2Add(
+          snake.look_direction, (Vector2){0, -1}
         );
-      if (IsKeyDown(KEY_A)) look_direction = Vector2Add(
-          look_direction, (Vector2){-1, 0}
+      if (IsKeyDown(KEY_A)) snake.look_direction = Vector2Add(
+          snake.look_direction, (Vector2){-1, 0}
         );
-      if (IsKeyDown(KEY_S)) look_direction = Vector2Add(
-          look_direction, (Vector2){0, 1}
+      if (IsKeyDown(KEY_S)) snake.look_direction = Vector2Add(
+          snake.look_direction, (Vector2){0, 1}
         );
-      if (IsKeyDown(KEY_D)) look_direction = Vector2Add(
-          look_direction, (Vector2){1, 0}
+      if (IsKeyDown(KEY_D)) snake.look_direction = Vector2Add(
+          snake.look_direction, (Vector2){1, 0}
         );
 
-      if (Vector2Length(look_direction) > DEADZONE)
-        look_direction = Vector2Normalize(look_direction);
+      if (Vector2Length(snake.look_direction) > DEADZONE)
+        snake.look_direction = Vector2Normalize(snake.look_direction);
 
     }
 
-    moveSnake(&snake, real_direction, dt);
+    moveSnake(&snake, dt);
 
     Vector2 sdiv2 = {GetRenderWidth()/2,GetRenderHeight()/2};
     camera.target = Vector2Lerp(
@@ -212,7 +394,7 @@ int main(){
             sdiv2
           ),
           Vector2Scale(
-            look_direction,
+            snake.look_direction,
             200 / camera.zoom
           )
         ),
@@ -231,47 +413,9 @@ int main(){
     
     BeginMode2D(camera);
     
-    for (float x = 0; x < GetRenderWidth(); x += 50 * camera.zoom) {
-    
-    };
 
+    renderSnake(&snake);
 
-    int i = 0;
-    Color colors[] =
-      {
-        {250, .a = 255},
-        {250, .a = 255},
-        {250, .a = 255},
-        WHITE,
-        {250, .a = 255},
-        {250, .a = 255},
-        {250, .a = 255},
-      };
-
-    for (SnakePart* part = snake.tail; part != NULL; part = part->next) {
-      Vector2 pos = part->pos;
-      
-      if (part->next != NULL) {
-        DrawCircleV(pos, snake.thickness, colors[i % 7]);
-      }
-      else {
-        DrawCircleV(pos, snake.thickness * 1.2, colors[i % 7]);
-      }
-      i += 4;
-    }
-
-    DrawLineEx(
-        Vector2Add(
-          snake.head->pos,
-          Vector2Scale(real_direction, snake.thickness * 2)
-        ),
-        Vector2Add(
-          snake.head->pos,
-          Vector2Scale(real_direction, snake.thickness * 6)
-        ),
-        5,
-        WHITE
-    );
     EndDrawing();
   }
   return 0;
