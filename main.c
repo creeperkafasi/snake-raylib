@@ -28,6 +28,7 @@ typedef struct {
   Vector2 movement_direction;
   Vector2 look_direction;
   float boost_time;
+  float current_speed;
 } Snake;
 
 void addSnakeFront(Snake* self, Vector2 pos, float length) {
@@ -72,9 +73,13 @@ void moveSnake(Snake* self, float dt) {
     speed *= BOOST;
     self->boost_time -= dt;
   }
+  self->current_speed = Lerp(self->current_speed, speed, dt / 0.2);
   for (SnakePart* part = self->tail; part != NULL; part = part->next){
     if (part->next == NULL) {
-      part->pos = Vector2Add(part->pos, Vector2Scale(self->movement_direction, speed * dt));
+      part->pos = Vector2Add(
+          part->pos,
+          Vector2Scale(self->movement_direction, self->current_speed * dt)
+      );
     }
     else {
       Vector2 dpos = Vector2Subtract(part->next->pos, part->pos);
@@ -292,7 +297,7 @@ void input_gamepad(Camera2D* camera, Snake* snake, float dt){
    snake->movement_direction = Vector2Normalize(
       Vector2Lerp(
         snake->movement_direction,
-        Vector2Normalize(temp_direction),
+        temp_direction,
         dt / 0.05
       )
     );
@@ -375,6 +380,7 @@ int main(){
   // Get uniform locations
   int iResolutionLoc = GetShaderLocation(speedlines_shader, "iResolution");
   int iTimeLoc = GetShaderLocation(speedlines_shader, "iTime");
+  int radiusLoc = GetShaderLocation(speedlines_shader, "RADIUS");
 
   float time = 0.0f;
 
@@ -396,6 +402,7 @@ int main(){
     .look_direction = {0, 0},
     .movement_direction = {1, 0},
     .boost_time = 0,
+    .current_speed = SPEED,
   };
   int partCount = 50;
   float initialLength = 100;
@@ -477,7 +484,7 @@ int main(){
     EndMode2D();
 
     // Speedlines during boost
-    if (snake.boost_time > 0) {
+    if ((snake.current_speed / SPEED) > 1.1) {
       SetShaderValue(
           speedlines_shader,
           iResolutionLoc,
@@ -485,6 +492,16 @@ int main(){
           SHADER_UNIFORM_VEC2
       );
       SetShaderValue(speedlines_shader, iTimeLoc, &time, SHADER_UNIFORM_FLOAT);
+      const float radius_min = 0.65;
+      float radius = 
+        (SPEED * BOOST - snake.current_speed) / (SPEED * BOOST - SPEED) *
+        (M_SQRT2 - radius_min) + radius_min;
+      SetShaderValue(
+          speedlines_shader,
+          radiusLoc,
+          &radius,
+          SHADER_UNIFORM_FLOAT
+      );
       BeginShaderMode(speedlines_shader);
       DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), WHITE);
       EndShaderMode();

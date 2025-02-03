@@ -7,7 +7,7 @@ uniform vec2 iResolution;
 uniform float iTime;
 
 #define PI 3.1415
-#define RADIUS 0.7
+uniform float RADIUS;
 
 vec3 hash(vec3 p) {
     p = vec3(dot(p, vec3(127.1, 311.7, 74.7)),
@@ -20,6 +20,7 @@ float smoothNoise(vec3 p) {
     vec3 i = floor(p);
     vec3 f = fract(p);
     vec3 u = f * f * (3.0 - 2.0 * f);
+    u = f;
 
     float a = dot(hash(i + vec3(0.0)), f - vec3(0.0));
     float b = dot(hash(i + vec3(1.0,0.0,0.0)), f - vec3(1.0,0.0,0.0));
